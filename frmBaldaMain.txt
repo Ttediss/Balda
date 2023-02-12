@@ -1,0 +1,2286 @@
+'***********************************************************************************************
+'** BaldaMain - Головная форма системы управления робота.
+'***********************************************************************************************
+Imports System.IO
+Imports System.Reflection
+
+Public Class frmBaldaMain
+
+#Region "Events And Classes"
+    '** Classes ********************************************************************************
+    Private WithEvents fObstacles As frmObstacles
+    Private WithEvents fConnectionServer As frmConnectionServer
+    Private WithEvents fPathTrace As frmPathTrace
+    '*******************************************************************************************
+    Private fPathChart As frmPathChart
+    '*******************************************************************************************
+    Private WithEvents BodyStateControl As clsBodyStateControl
+    Private WithEvents BodyMotionControl As clsBodyMotionControl
+    Private WithEvents BodyGoalListBuilder As clsBodyGoalListBuilder
+    '*******************************************************************************************
+    Private GoalList As clsGoalList
+    '*******************************************************************************************
+    Private Sound As New clsSound
+    '*******************************************************************************************
+#End Region
+
+#Region "Constants"
+    '*******************************************************************************************
+    '-- Режимы управления
+    '*******************************************************************************************
+    Private Const cGoalListBuilderToBeOn As Boolean = True
+    Private Const cMotionControlToBeOn As Boolean = True
+    Private Const cStateControlToBeOn As Boolean = True
+    '*******************************************************************************************
+    '** Включаемые Формы
+    '*******************************************************************************************
+    Private Const cShowConnectionServer = True      '-- Показывать ли форму ConnectionServer ---
+    Private Const cShowObstacles = True             '-- Показывать ли форму Obstacles ----------
+    Private Const cShowPathTrace = True             '-- Показывать ли форму PathTrace ----------
+    '*******************************************************************************************
+    '-- Режим пошаговой отладки 
+    '*******************************************************************************************
+    Private Const cStepMode As Boolean = False
+    '*******************************************************************************************
+    '-- Режим имитации движения
+    '*******************************************************************************************
+    Private Const cSimulator As Integer = -1
+    '*******************************************************************************************
+    '-- Звуковая индикация
+    '*******************************************************************************************
+    Private Const cSoundsOn As Boolean = True
+    '*******************************************************************************************
+    '-- Доступность использования базы карт окружающей среды
+    '*******************************************************************************************
+    Private Const cMapBaseIsOn As Boolean = True
+    '*******************************************************************************************
+    '-- Размеры формы --------------------------------------------------------------------------
+    Const kScrXmax As Integer = 360
+    Const kScrYmax As Integer = 440
+    '*******************************************************************************************
+    '-- Расположение формы на экране -----------------------------------------------------------
+    Const kScrXLeft As Integer = 10
+    Const kScrYTop As Integer = 40               '20
+    '*******************************************************************************************
+#End Region
+
+#Region "Local variables"
+    '*******************************************************************************************
+    '** IniFile
+    '*******************************************************************************************
+    Private varIniFile As String
+    '*******************************************************************************************
+    '** Настройка отладочной печати
+    '*******************************************************************************************
+    Private varDebug As Integer
+    Private varLogFile As String
+    Private varLogDir As String
+    Private varLog As String
+    '*******************************************************************************************
+    '** Имя файла с Маршрутом/Командой
+    '*******************************************************************************************
+    Private varGoalListFile As String
+    '*******************************************************************************************
+    '** Тип представения маршрута
+    '*******************************************************************************************
+    Private varGoalListType As Integer
+    '-- -1 - МАРШРУТ: ID карты, помещений, Пассфреймов и проходов, содержащийся в Базе Данных
+    '--  0 - МАРШРУТ: ID карты, помещений, Пассфреймов и проходов, построенный Роботом
+    '--  1 - КОМАНДА: Тип представения 2 - 4 содержится в файле КОМАНДЫ 
+    '--  2 - КОМАНДА: Массив координат целевых позиций, с углами и шириной створов
+    '--  3 - КОМАНДА: Массивы целевых позиций в представлении Угол поворота-Расстояние
+    '--  4 - КОМАНДА: Массивы координат целевых позиций
+    '*******************************************************************************************
+    '-- Режимы управления
+    '*******************************************************************************************
+    Private varGoalListBuilderToBeOn As Boolean  '-- Построение Маршрута движением Робота
+    Private varMotionControlToBeOn As Boolean   '-- Управление движением Робота
+    Private varStateControlToBeOn As Boolean     '-- Контоль состояния бамперов и аккумуляторов  
+    '*******************************************************************************************
+    '** Включаемые Формы
+    '*******************************************************************************************
+    Private showConnectionServer As Boolean     '-- Показывать ли форму ConnectionServer -------
+    Private showObstacles As Boolean            '-- Показывать ли форму Obstacles --------------
+    Private showPathTrace As Boolean            '-- Показывать ли форму PathTrace --------------
+    '*******************************************************************************************
+    '** Индакаторы рабочего состояния
+    '*******************************************************************************************
+    Private BodyGoalListBuilderIsOn As Boolean
+    Private BodyMotionControlIsOn As Boolean
+    Private BodyStateControlIsOn As Boolean
+    Private isOn As Boolean
+    '*******************************************************************************************
+    '** Состояние Робота
+    '*******************************************************************************************
+    Private varStatus As Integer
+    ' cRobotSleep As Integer                    '-- Стоим не проснувшись
+    ' cRobotReady As Integer                    '-- Стоим, ждем команды 
+    ' cRobotMove As Integer                     '-- Двигаемся к заданной Цели
+    ' cRobotBuildMap As Integer                 '-- Двигаемся для построения (уточнение) карты    
+    ' cRobotManual As Integer                   '-- Двигаемся в ручном режиме
+    '*******************************************************************************************
+    Private aMsg As String
+    Private msgColor As Color
+    '*******************************************************************************************
+#End Region
+
+    '*******************************************************************************************
+
+#Region "New, Open, Close Procedures"
+
+    '*******************************************************************************************
+    ' Sub New 
+    '-------------------------------------------------------------------------------------------
+    Public Sub New()
+        '--
+        InitializeComponent()
+        '---------------------------------------------------------------------------------------
+        varIniFile = cIniFile
+        varLogDir = cLogDir
+        varDebug = 0
+        '---------------------------------------------------------------------------------------
+        varGoalListFile = ""
+        '---------------------------------------------------------------------------------------
+        showConnectionServer = cShowConnectionServer
+        showObstacles = cShowObstacles
+        showPathTrace = cShowPathTrace
+        '---------------------------------------------------------------------------------------
+        varGoalListBuilderToBeOn = cGoalListBuilderToBeOn
+        varMotionControlToBeOn = cMotionControlToBeOn
+        varStateControlToBeOn = cStateControlToBeOn
+        '---------------------------------------------------------------------------------------
+        MapBaseIsOn = cMapBaseIsOn
+        '---------------------------------------------------------------------------------------
+        BodyGoalListBuilderIsOn = False
+        BodyMotionControlIsOn = False
+        BodyStateControlIsOn = False
+        '---------------------------------------------------------------------------------------
+        msgColor = Color.Red
+        aMsg = "BodyMotionControl: НЕ Готов" + vbCrLf +
+               "BodyStateControl: НЕ Готов" + vbCrLf +
+               "BodyGoalListBuilder: НЕ Готов"
+        CheckBasic()
+        ShowDisabled()
+        '---------------------------------------------------------------------------------------
+        SoundsOn = cSoundsOn
+        Simulator = cSimulator
+        StepMode = cStepMode
+        '---------------------------------------------------------------------------------------
+        '** Формирование директории, содержащей Log файлы, если ее еще нет 
+        '---------------------------------------------------------------------------------------
+        SetLogDir()
+        '---------------------------------------------------------------------------------------
+        varStatus = cRobotSleep
+        isOn = False
+        '---------------------------------------------------------------------------------------
+    End Sub
+
+    '*******************************************************************************************
+    '   BaldaMain_Load
+    '-------------------------------------------------------------------------------------------
+    Private Sub BaldaMain_Load(ByVal sender As System.Object, ByVal e As System.EventArgs) _
+                                                                            Handles MyBase.Load
+        '--
+        Dim UsID As String
+        Dim Pass As String
+        '--
+        Me.KeyPreview() = True
+        '--
+        '--- Set the form Location on the screen -----------------------------------------------
+        Me.MaximumSize = New Size(Me.Size.Width, Me.Size.Height)
+        Me.MinimumSize = New Size(Me.Size.Width, Me.Size.Height)
+        Me.SetBounds(kScrXLeft, kScrYTop, 0, 0,
+                     Windows.Forms.BoundsSpecified.X Or Windows.Forms.BoundsSpecified.Y)
+        '--
+        '-- Get Params From IniFile ------------------------------------------------------------
+        GetParamsFromIniFile()
+        If varDebug > 0 Then Write1Line()
+        '--
+        '-- Проверка корректности Режима управления Роботом ------------------------------------
+        If varMotionControlToBeOn = False And varStateControlToBeOn = False Then
+            msgColor = Color.Red
+            aMsg = "Критическая ошибка: Режим управления Роботом задан НЕ корректно"
+            lblMsg.Text = aMsg
+            If varDebug > 0 Then WriteEventLog(aMsg)
+            Exit Sub
+        End If
+        '--
+        '** Режим пошаговой отладки btnInit делаем видимой *************************************
+        If StepMode Then
+            btnInit.Visible = True
+        End If
+        '--
+        '-- Инициализируем массивы констант ----------------------------------------------------
+        InitArrayConstants()
+        '--
+        '** Init system thisProcess and sysWatch ***********************************************
+        InitProcessWatch()
+        If varDebug > 0 Then
+            WriteEventLog("This Process - " + thisProcess.ProcessName)
+            Dim frequency As Long = System.Diagnostics.Stopwatch.Frequency
+            WriteEventLog("Timer frequency in ticks/sec = " + frequency.ToString)
+        End If
+        '--
+        '** Open DB ****************************************************************************
+        If MapBaseIsOn Then
+            UsID = ""
+            Pass = ""
+            If Not OpenDB(UsID, Pass) Then
+                msgColor = Color.Red
+                aMsg = "Критическая ошибка: Не открывается База Данных!"
+                lblMsg.Text = aMsg
+                If varDebug > 0 Then WriteEventLog(aMsg)
+                Exit Sub
+            End If
+        End If
+        '--
+        '***************************************************************************************
+        '** Open GoalList **********************************************************************
+        Try
+            GoalList = New clsGoalList
+        Catch ex As Exception
+            If GoalList IsNot Nothing Then GoalList = Nothing
+            msgColor = Color.Red
+            aMsg = "GoalList Initialisation Failed" & ": " & ex.Message
+            If varDebug > 0 Then WriteEventLog(aMsg)
+            Exit Sub
+        End Try
+        varGoalListType = GoalList.GoalListType
+        varGoalListFile = GoalList.GoalListFile
+        '--
+        '--- Open Form ConnectionServer --------------------------------------------------------
+        If showConnectionServer Then
+            fConnectionServer = New frmConnectionServer
+            fConnectionServer.Show()
+            PublicForms.FormConnectionServer = fConnectionServer
+            AddHandler fConnectionServer.Status, AddressOf Connection_Status
+            AddHandler fConnectionServer.ErrorArise, AddressOf Connection_Error
+            AddHandler fConnectionServer.ErrorReceived, AddressOf Connection_ErrorReceived
+            AddHandler fConnectionServer.ConnAccepted, AddressOf Connection_Accepted
+            AddHandler fConnectionServer.DoBuildPath, AddressOf Connection_DoBuildPath
+            AddHandler fConnectionServer.DoExec, AddressOf Connection_DoExec
+            AddHandler fConnectionServer.DoStop, AddressOf Connection_DoStop
+            AddHandler fConnectionServer.DoBuildMap, AddressOf Connection_DoBuildMap
+            AddHandler fConnectionServer.DoManual, AddressOf Connection_DoManual
+            AddHandler fConnectionServer.DoAutomat, AddressOf Connection_DoAutomat
+            If varDebug > 1 Then WriteEventLog("ConnectionServer Инициализован")
+            '--
+        End If
+        '--
+        '--- Open FormObstacles form -----------------------------------------------------------
+        If showObstacles Then
+            fObstacles = New frmObstacles
+            fObstacles.Show()
+            PublicForms.FormObstacles = fObstacles
+            If varDebug > 1 Then WriteEventLog("Obstacles Инициализован")
+        End If
+        '--
+        '--- Open PathTrace form ---------------------------------------------------------------
+        If MapBaseIsOn And showPathTrace Then
+            fPathTrace = New frmPathTrace
+            fPathTrace.Show()
+            PublicForms.FormPathTrace = fPathTrace
+            AddHandler fPathTrace.DoBuildPath, AddressOf PathTrace_DoBuildPath
+            AddHandler fPathTrace.ErrorArise, AddressOf PathTrace_Error
+            If varDebug > 1 Then WriteEventLog("PathTrace Инициализован")
+        End If
+        '--
+        '** Open BodyStateControl **************************************************************
+        If varStateControlToBeOn Then
+            Try
+                BodyStateControl = New clsBodyStateControl
+            Catch ex As Exception
+                msgColor = Color.Red
+                aMsg = "Error: BodyStateControl Class Initialisation Failed!"
+                lblMsg.Text = aMsg
+                If varDebug > 0 Then WriteEventLog(aMsg)
+                Exit Sub
+            End Try
+            '--
+            If BodyStateControl.Open() Then
+                AddHandler BodyStateControl.ErrorArise, AddressOf BodyStateControl_Error
+                AddHandler BodyStateControl.Status, AddressOf BodyStateControl_Status
+                AddHandler BodyStateControl.IRBumpDist, AddressOf BodyStateControl_IRBumpDist
+                AddHandler BodyStateControl.BumpState, AddressOf BodyStateControl_Bumpers
+                AddHandler BodyStateControl.PowerState, AddressOf BodyStateControl_PowerState
+                AddHandler BodyStateControl.ExecManual, AddressOf BodyStateControl_ExecManual
+            Else
+                BodyStateControl = Nothing
+                msgColor = Color.Red
+                aMsg = "Error: BodyStateControl Opening Failed"
+                If varDebug > 0 Then WriteEventLog(aMsg)
+                lblMsg.Text = aMsg
+                Exit Sub
+            End If
+        End If
+        '--
+        '** Open BodyMotionControl *************************************************************
+        If varMotionControlToBeOn Then
+            Try
+                BodyMotionControl = New clsBodyMotionControl
+            Catch ex As Exception
+                msgColor = Color.Red
+                aMsg = "Error: BodyMotionControl Class Initialisation Failed"
+                If varDebug > 0 Then WriteEventLog(aMsg)
+                lblMsg.Text = aMsg
+                Exit Sub
+            End Try
+            '--
+            If BodyMotionControl.Open(GoalList) Then
+                AddHandler BodyMotionControl.MovingDir, AddressOf BodyMotionControl_MovingDir
+                AddHandler BodyMotionControl.ErrorArise, AddressOf BodyMotionControl_Error
+                AddHandler BodyMotionControl.Status, AddressOf BodyMotionControl_Status
+                AddHandler BodyMotionControl.StopEvent, AddressOf BodyMotionControl_Stop
+                AddHandler BodyMotionControl.InitPosition, AddressOf BodyMotionControl_InitPosition
+                AddHandler BodyMotionControl.CurrPosition, AddressOf BodyMotionControl_CurrPosition
+            Else
+                BodyMotionControl = Nothing
+                msgColor = Color.Red
+                aMsg = "Error: BodyMotionControl Opening Failed"
+                If varDebug > 0 Then WriteEventLog(aMsg)
+                lblMsg.Text = aMsg
+                Exit Sub
+            End If
+        End If
+        '--
+        '** Open BaldaDecisionControl **********************************************************
+        If MapBaseIsOn And varGoalListBuilderToBeOn Then
+            Try
+                BodyGoalListBuilder = New clsBodyGoalListBuilder
+            Catch ex As Exception
+                If BodyGoalListBuilder IsNot Nothing Then BodyGoalListBuilder = Nothing
+                msgColor = Color.Red
+                aMsg = "Error: BodyGoalListBuilder Class Initialisation Failed"
+                If varDebug > 0 Then WriteEventLog(aMsg)
+                MessageBox.Show(aMsg, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+            End Try
+            '--
+            AddHandler BodyGoalListBuilder.PathBuilt, AddressOf BodyGoalListBuilder_PathBuilt
+            AddHandler BodyGoalListBuilder.ErrorArise, AddressOf BodyGoalListBuilder_Error
+            BodyGoalListBuilderIsOn = True
+        End If
+        '--
+        '** Запускаем ConnectionServer *********************************************************
+        If fConnectionServer IsNot Nothing Then
+            If Len(varGoalListFile) > 4 Then fConnectionServer.GoalListFile = varGoalListFile
+            fConnectionServer.DoListen(True)
+        End If
+        '--
+        '***************************************************************************************
+        If varDebug > 0 Then
+            WriteEventLog("Opened")
+            Write2Line()
+        End If
+        '--
+        If BodyMotionControl IsNot Nothing Then BodyMotionControl.CheckStatus()
+        '--
+    End Sub
+
+    '*******************************************************************************************
+    '   BaldaMain_UnLoad
+    '-------------------------------------------------------------------------------------------
+    Private Sub BaldaMain_UnLoad(ByVal sender As Object,
+                ByVal e As System.Windows.Forms.FormClosingEventArgs) Handles Me.FormClosing
+        '--
+        'SaveParamsToIniFile()
+        '--
+        If varDebug > 0 Then WriteEventLog("Closing")
+        '---------------------------------------------------------------------------------------
+        If BodyMotionControl IsNot Nothing Then
+            BodyMotionControl.DoStop(True)
+        End If
+        '---------------------------------------------------------------------------------------
+        If fObstacles IsNot Nothing Then
+            fObstacles.Close()
+            fObstacles = Nothing
+        End If
+        '---------------------------------------------------------------------------------------
+        If fPathTrace IsNot Nothing Then
+            RemoveHandler fPathTrace.DoBuildPath, AddressOf PathTrace_DoBuildPath
+            RemoveHandler fPathTrace.ErrorArise, AddressOf PathTrace_Error
+            fPathTrace.Close()
+            fPathTrace = Nothing
+        End If
+        '---------------------------------------------------------------------------------------
+        If fPathChart IsNot Nothing Then
+            fPathChart = Nothing
+        End If
+        '---------------------------------------------------------------------------------------
+        If fConnectionServer IsNot Nothing Then
+            fConnectionServer.DoListen(False)
+            RemoveHandler fConnectionServer.Status, AddressOf Connection_Status
+            RemoveHandler fConnectionServer.ErrorArise, AddressOf Connection_Error
+            RemoveHandler fConnectionServer.ErrorReceived, AddressOf Connection_ErrorReceived
+            RemoveHandler fConnectionServer.ConnAccepted, AddressOf Connection_Accepted
+            RemoveHandler fConnectionServer.DoBuildPath, AddressOf Connection_DoBuildPath
+            RemoveHandler fConnectionServer.DoExec, AddressOf Connection_DoExec
+            RemoveHandler fConnectionServer.DoStop, AddressOf Connection_DoStop
+            RemoveHandler fConnectionServer.DoBuildMap, AddressOf Connection_DoBuildMap
+            RemoveHandler fConnectionServer.DoManual, AddressOf Connection_DoManual
+            RemoveHandler fConnectionServer.DoAutomat, AddressOf Connection_DoAutomat
+            fConnectionServer.Close()
+            fConnectionServer = Nothing
+        End If
+        '---------------------------------------------------------------------------------------
+        If BodyStateControl IsNot Nothing Then
+            RemoveHandler BodyStateControl.ErrorArise, AddressOf BodyStateControl_Error
+            RemoveHandler BodyStateControl.Status, AddressOf BodyStateControl_Status
+            RemoveHandler BodyStateControl.IRBumpDist, AddressOf BodyStateControl_IRBumpDist
+            RemoveHandler BodyStateControl.BumpState, AddressOf BodyStateControl_Bumpers
+            RemoveHandler BodyStateControl.PowerState, AddressOf BodyStateControl_PowerState
+            RemoveHandler BodyStateControl.ExecManual, AddressOf BodyStateControl_ExecManual
+            BodyStateControl.Close()
+            BodyStateControl = Nothing
+        End If
+        '---------------------------------------------------------------------------------------
+        If BodyMotionControl IsNot Nothing Then
+            RemoveHandler BodyMotionControl.MovingDir, AddressOf BodyMotionControl_MovingDir
+            RemoveHandler BodyMotionControl.StopEvent, AddressOf BodyMotionControl_Stop
+            RemoveHandler BodyMotionControl.ErrorArise, AddressOf BodyMotionControl_Error
+            RemoveHandler BodyMotionControl.Status, AddressOf BodyMotionControl_Status
+            RemoveHandler BodyMotionControl.InitPosition, AddressOf BodyMotionControl_InitPosition
+            RemoveHandler BodyMotionControl.CurrPosition, AddressOf BodyMotionControl_CurrPosition
+            BodyMotionControl.Close()
+            BodyMotionControl = Nothing
+        End If
+        '---------------------------------------------------------------------------------------
+        If BodyGoalListBuilder IsNot Nothing Then
+            RemoveHandler BodyGoalListBuilder.PathBuilt, AddressOf BodyGoalListBuilder_PathBuilt
+            RemoveHandler BodyGoalListBuilder.ErrorArise, AddressOf BodyGoalListBuilder_Error
+            BodyGoalListBuilder = Nothing
+        End If
+        '---------------------------------------------------------------------------------------
+        If GoalList IsNot Nothing Then
+            GoalList = Nothing
+        End If
+        '---------------------------------------------------------------------------------------
+        If DBIO IsNot Nothing Then
+            CloseDB()
+            DBIO = Nothing
+        End If
+        '--
+    End Sub
+
+#End Region
+
+    '*******************************************************************************************
+
+#Region "Error Events"
+
+    '** BodyStateControl_Error *****************************************************************
+    Private Sub BodyStateControl_Error(ByVal aDesc As String)
+        '--
+        msgColor = Color.Red
+        aMsg = "BodyStateControl Error: " & aDesc
+        '--
+        '-- Демонстрируем сообщение об ошибке --------------------------------------------------
+        If PublicForms.ServerIsConnected Then
+            fConnectionServer.ErrMessage(aMsg)
+        End If
+        '--
+        If varDebug > 0 Then WriteEventLog(aMsg)
+        Me.Invoke(New EventHandler(AddressOf ShowMsg))
+        '--
+        aMsg = ""
+        '--
+    End Sub
+
+    '** BodyMotionControl_Error ****************************************************************
+    Private Sub BodyMotionControl_Error(ByVal aDesc As String)
+        '--
+        msgColor = Color.Red
+        aMsg = "BodyMotionControl Error: " & aDesc
+        '--
+        '-- Демонстрируем сообщение об ошибке --------------------------------------------------
+        If PublicForms.ServerIsConnected Then
+            fConnectionServer.ErrMessage(aMsg)
+        End If
+        '--
+        If varDebug > 0 Then WriteEventLog(aMsg)
+        Me.Invoke(New EventHandler(AddressOf ShowMsg))
+        '--
+        aMsg = ""
+        '--
+    End Sub
+
+    '** BodyGoalListBuilder_Error *************************************************************************
+    Private Sub BodyGoalListBuilder_Error(ByVal aDesc As String)
+        '--
+        msgColor = Color.Red
+        aMsg = "BodyGoalListBuilder Error: " & aDesc
+        '--
+        '-- Демонстрируем сообщение об ошибке --------------------------------------------------
+        If PublicForms.ServerIsConnected Then
+            fConnectionServer.ErrMessage(aMsg)
+        End If
+        '--
+        If varDebug > 0 Then WriteEventLog(aMsg)
+        Me.Invoke(New EventHandler(AddressOf ShowMsg))
+        '--
+        aMsg = ""
+        '--
+    End Sub
+
+    '** Connection_Error **********************************************************************
+    Private Sub Connection_Error(ByVal aDesc As String)
+        '--
+        msgColor = Color.Red
+        aMsg = "Connection Error: " & aDesc
+        '--
+        If varDebug > 0 Then WriteEventLog(aMsg)
+        Me.Invoke(New EventHandler(AddressOf ShowMsg))
+        '--
+        aMsg = ""
+        '--
+    End Sub
+
+    '** Connection_ErrorReceived ***************************************************************
+    Private Sub Connection_ErrorReceived(ByVal aDesc As String)
+        '--
+        msgColor = Color.Red
+        aMsg = "Connection ErrorReceived: " & aDesc
+        '--
+        If varDebug > 0 Then WriteEventLog(aMsg)
+        Me.Invoke(New EventHandler(AddressOf ShowMsg))
+        '--
+        aMsg = ""
+        '--
+    End Sub
+
+    Private Sub PathTrace_Error(ByVal aDesc As String)
+        '--
+        msgColor = Color.Red
+        aMsg = "PathTrace Error: " & aDesc
+        '--
+        '-- Демонстрируем сообщение об ошибке --------------------------------------------------
+        If PublicForms.ServerIsConnected Then
+            fConnectionServer.ErrMessage(aMsg)
+        End If
+        '--
+        If varDebug > 0 Then WriteEventLog(aMsg)
+        Me.Invoke(New EventHandler(AddressOf ShowMsg))
+        '--
+        aMsg = ""
+        '--
+    End Sub
+
+#End Region
+
+#Region "Status Events"
+
+    '** BodyStateControl_Status ****************************************************************
+    Private Sub BodyStateControl_Status(ByVal aStatus As Boolean)
+        '--
+        BodyStateControlIsOn = aStatus
+        If varDebug > 0 Then WriteEventLog("BodyStateControl Status = " & aStatus.ToString)
+        ' SetStatus()
+        '--
+    End Sub
+
+    '** BodyMotionControl_Status ***************************************************************
+    Private Sub BodyMotionControl_Status(ByVal aStatus As Boolean)
+        '--
+        BodyMotionControlIsOn = aStatus
+        If varDebug > 0 Then WriteEventLog("BodyMotionControl Status = " & aStatus.ToString)
+        SetStatus()
+        '--
+    End Sub
+
+    '** Connection_Status **********************************************************************
+    Private Sub Connection_Status(ByVal aStatus As Boolean)
+        '--
+        If aStatus = True Then
+            msgColor = Color.Green
+            aMsg = "Connection is ON"
+        Else
+            msgColor = Color.Red
+            aMsg = "Connection is OFF"
+        End If
+        If varDebug > 0 Then WriteEventLog(aMsg)
+        Me.Invoke(New EventHandler(AddressOf ShowMsg))
+        aMsg = ""
+        '--
+    End Sub
+
+#End Region
+
+#Region " * SetStatus, WakeUp, Sleep"
+
+    '** SetStatus ******************************************************************************
+    Private Sub SetStatus()
+        '--
+        If varStateControlToBeOn Then BodyStateControlIsOn = BodyStateControl.GetStatus
+        '--
+        If BodyMotionControlIsOn = varMotionControlToBeOn And
+           BodyStateControlIsOn = varStateControlToBeOn Then
+            '--
+            If isOn = False Then
+                '-- Переводим Робота в состояние готовности к движению -------------------------
+                isOn = True
+                WakeUp()
+                '--
+            End If
+        Else
+            '--
+            '-- Переводим Робота в состояние НЕ готовности к движению --------------------------
+            isOn = False
+            Sleep()
+            '--
+        End If
+        '--
+    End Sub
+
+    '** WakeUp *********************************************************************************
+    Private Sub WakeUp()
+        '--
+        varStatus = cRobotSleep
+        '--
+        '-- Заставляем бамперы отправить события с своим состоянием ----------------------------
+        If BodyStateControlIsOn Then BodyStateControl.CheckState()
+        '--
+        '-- Очищаем картинку на Obstacles  -----------------------------------------------------
+        If PublicForms.FormObstaclesIsOn Then
+            fObstacles.ClearDataValues()
+            fObstacles.ShowObstacles(True)
+            fObstacles.ShowBumpers(True)
+        End If
+        '--
+        '-- Определяем состояние кнопок как готовность к формированию Маршрута/Команды ---------
+        msgColor = Color.Green
+        aMsg = "Ожидание Маршрута/Команды"
+        Me.Invoke(New EventHandler(AddressOf ShowEnabeled))
+        aMsg = ""
+        '--
+        '-- Заполняем список предопределенных Маршрутов и Команд -------------------------------
+        If MapBaseIsOn Then
+            varGoalListType = -1
+            Me.Invoke(New EventHandler(AddressOf EnableSaved))
+            Me.Invoke(New EventHandler(AddressOf CheckSaved))
+            Me.Invoke(New EventHandler(AddressOf LoadPathList))
+        Else
+            varGoalListType = 1
+            Me.Invoke(New EventHandler(AddressOf CheckBasic))
+            Me.Invoke(New EventHandler(AddressOf DisableSaved))
+            Me.Invoke(New EventHandler(AddressOf LoadCommands))
+        End If
+        '--
+        '-- Отправляем сообщение на удаленный терминал  ----------------------------------------
+        If PublicForms.ServerIsConnected Then
+            fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn,
+                                            BodyMotionControlIsOn, BodyStateControlIsOn)
+        End If
+        '--
+        '-- Запускаем процедуру определения положения Робота -----------------------------------
+        If BodyMotionControlIsOn = False Then Exit Sub
+        'If MapBaseIsOn Then
+        If varDebug > 0 Then
+            WriteEventLog("Запускается процедура определения положения Робота")
+        End If
+        BodyMotionControl.FindInitPosition()
+        '--
+        'Else()
+        'BodyMotionControl.SetZeroInitPosition()
+        'End If
+        '--
+    End Sub
+
+    '** Sleep **********************************************************************************
+    Private Sub Sleep()
+        '--
+        varStatus = cRobotSleep
+        '--
+        '-- Формируем сообщение и определяем состояние кнопок как НЕ готовность к движению -----
+        aMsg = ""
+        If varStateControlToBeOn And BodyStateControlIsOn = False Then
+            aMsg = aMsg + "BodyStateControl: НЕ Готов" + vbCrLf
+        End If
+        If varMotionControlToBeOn And BodyMotionControlIsOn = False Then
+            aMsg = aMsg + "BodyMotionControl: НЕ Готов" + vbCrLf
+        End If
+        If varGoalListBuilderToBeOn And BodyGoalListBuilderIsOn = False Then
+            aMsg = aMsg + "BodyGoalListBuilder: НЕ Готов" + vbCrLf
+        End If
+        aMsg = aMsg + "Робот к работе НЕ готов"
+        msgColor = Color.Red
+        Me.Invoke(New EventHandler(AddressOf ShowDisabled))
+        aMsg = ""
+        '--
+        Me.Invoke(New EventHandler(AddressOf CheckBasic))
+        Me.Invoke(New EventHandler(AddressOf DisableSaved))
+        Me.Invoke(New EventHandler(AddressOf ClearGoalLists))
+        '--
+        '-- Удаляем картинку старого Маршрута на экране PathTrace  -----------------------------
+        'If PublicForms.FormPathTraceIsOn Then fPathTrace.ClearGoalList()
+        '--
+        '-- Очищаем картинку на FormObstacles --------------------------------------------------
+        If PublicForms.FormObstaclesIsOn Then
+            fObstacles.ClearDataValues()
+            fObstacles.ShowObstacles(False)
+            fObstacles.ShowBumpers(False)
+        End If
+        '--
+        '-- Отправляем сообщение на удаленный терминал  ----------------------------------------
+        If PublicForms.ServerIsConnected Then
+            fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn,
+                                            BodyMotionControlIsOn, BodyStateControlIsOn)
+        End If
+        '--
+    End Sub
+
+#End Region
+
+    '*******************************************************************************************
+
+#Region " *** btnExec_Click, btnStop_Click, btnManual_Click, btnMap_Click"
+
+    '*******************************************************************************************
+    '** btnExec_Click
+    '*******************************************************************************************
+    Private Sub btnExec_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) _
+                                                                        Handles btnExec.Click
+        DoExec()
+        Do While True
+            Try
+                lblGoalList.Text = lstGoalLists.Items(0)
+                DoExec()
+
+                lstGoalLists.Items.Clear()
+                System.IO.Directory.Delete(Path, True)
+            Catch ex As Exception
+                Console.WriteLine("Ooops")
+
+            End Try
+            System.Threading.Thread.Sleep(2000)
+        Loop
+    End Sub
+
+    '*******************************************************************************************
+    '** btnStop_Click
+    '*******************************************************************************************
+    Private Sub btnStop_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) _
+                                                                        Handles btnStop.Click
+        DoStop()
+    End Sub
+
+    '*******************************************************************************************
+    '** btnManual_Click
+    '*******************************************************************************************
+    Private Sub btnManual_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) _
+                                                                        Handles btnManual.Click
+        '--
+        If btnManual.Text = "Manual" Then
+            DoManual()
+        Else
+            DoAutomat()
+        End If
+        '--
+    End Sub
+
+    '*******************************************************************************************
+    '** btnMap_Click
+    '*******************************************************************************************
+    Private Sub btnMap_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) _
+                                                                        Handles btnMap.Click
+        DoBuildMap()
+    End Sub
+
+    '*******************************************************************************************
+    '** btnMap_Click
+    '*******************************************************************************************
+    Private Sub btnInit_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) _
+                                                                        Handles btnInit.Click
+        '--
+        '-- Запускаем процедуру определения положения Робота -----------------------------------
+        If BodyMotionControlIsOn = False Then Exit Sub
+        BodyMotionControl.FindInitPosition()
+    End Sub
+
+#End Region
+
+    '*******************************************************************************************
+
+#Region " ! BodyMotionControl Events"
+
+    '*******************************************************************************************
+    '** BodyMotionControl_InitPosition
+    '*******************************************************************************************
+    Private Sub BodyMotionControl_InitPosition(ByVal aMapID As Integer, _
+                                  ByVal aAreaID As Integer, ByVal aPsFrID As Integer, _
+                                  ByVal aX As Double, ByVal aY As Double, ByVal aA As Double)
+        '--
+        varStatus = cRobotReady
+        '--
+        '-- Исходную позицию передаем на удаленный терминал -------------------------------------
+        If PublicForms.ServerIsConnected Then
+            fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn, _
+                                            BodyMotionControlIsOn, BodyStateControlIsOn)
+            fConnectionServer.InitPosition(aMapID, aAreaID, aPsFrID, aX, aY, aA)
+        End If
+        '--
+        If aMapID > 0 Then
+            '--
+            '-- Индикация Исходная позиция найдена ---------------------------------------------
+            msgColor = Color.Green
+            aMsg = "BodyMotionControl.InitPosition: Определена Начальная позиция."
+            If varDebug > 0 Then WriteEventLog(aMsg)
+            Me.Invoke(New EventHandler(AddressOf ShowEnabeled))
+            aMsg = ""
+            '--
+            '-- Отображаем исходную позицию на PathTrace  --------------------------------------
+            If PublicForms.FormPathTraceIsOn Then
+                fPathTrace.SetInitPosition(aMapID, aAreaID, aX, aY, aA)
+            End If
+            '--
+            '-- Отображаем Текущую позицию на PathChart  ---------------------------------------
+            If PublicForms.FormPathChartIsOn Then
+                fPathChart.AddPoints(aX, aY, aA, aX, aY)
+            End If
+            '--
+        Else
+            '--
+            '-- Индикация Исходная позиция НЕ идентифицирована ---------------------------------
+            msgColor = Color.Red
+            aMsg = "BodyMotionControl.InitPosition: Начальная позиция в начале координат."
+            If varDebug > 0 Then WriteEventLog(aMsg)
+            Me.Invoke(New EventHandler(AddressOf ShowEnabeled))
+            aMsg = ""
+            '--
+        End If
+        '--
+    End Sub
+
+    '*******************************************************************************************
+    '** BodyMotionControl_CurrPosition
+    '*******************************************************************************************
+    Private Sub BodyMotionControl_CurrPosition(ByVal aMapID As Integer, _
+                                  ByVal aAreaID As Integer, ByVal aPsFrID As Integer, _
+                                  ByVal aX As Double, ByVal aY As Double, ByVal aA As Double, _
+                                  ByVal aXVel As Double, ByVal aYVel As Double, _
+                                  ByVal aVel As Double, ByVal aOmg As Double, _
+                                  ByVal aTS As Double)
+        '--
+        '-- Передаем Текущую позицию на удаленный терминал -------------------------------------
+        If PublicForms.ServerIsConnected Then
+            fConnectionServer.Position(aMapID, aAreaID, aPsFrID, aX, aY, aA, aVel, aOmg, aTS)
+        End If
+        '--
+        '-- Контрольная печать -----------------------------------------------------------------
+        If varDebug > 1 Then
+            WriteEventLog("BodyMotionControl.CurrPosition: Получена текущая позиция")
+        End If
+        '--
+        '-- Отображаем Текущую позицию на PathTrace  -------------------------------------------
+        If PublicForms.FormPathTraceIsOn Then
+            fPathTrace.SetCurrPosition(aMapID, aAreaID, aX, aY, aA)
+        End If
+        '--
+        '-- Отображаем Текущую позицию на PathChart  -------------------------------------------
+        If PublicForms.FormPathChartIsOn Then
+            fPathChart.AddPoints(aX, aY, aA, aX, aY)
+        End If
+        '--
+    End Sub
+
+    '*******************************************************************************************
+    '** BodyMotionControl_Stop
+    '*******************************************************************************************
+    Private Sub BodyMotionControl_Stop(ByVal aReason As Integer)
+        Dim aMapID As Integer
+        Dim aAreaID As Integer
+        Dim aPsFrID As Integer
+        Dim aX As Double
+        Dim aY As Double
+        Dim aA As Double
+        Dim aTS As Double
+        '--
+        varStatus = cRobotReady
+        If aReason < 0 Then aReason = 1
+        '--
+        '-- Запрашиваем последнюю позицию Робота -----------------------------------------------
+        BodyMotionControl.GetCurrPosition(aMapID, aAreaID, aPsFrID, aX, aY, aA, aTS)
+        '--
+        '-- Передаем позицию, причину остановки и состояние Робота на удаленный терминал -------
+        If PublicForms.ServerIsConnected Then
+            fConnectionServer.Position(aMapID, aAreaID, aPsFrID, aX, aY, aA, 0, 0, aTS)
+            fConnectionServer.StopReason(cStopReason(aReason))
+            fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn, _
+                                            BodyMotionControlIsOn, BodyStateControlIsOn)
+        End If
+        '--
+        '-- Получена команда остановки. Демонстрируем причину остановки ------------------------
+        msgColor = Color.Red
+        aMsg = "BodyMotionControl.Stop: " & cStopReason(aReason)
+        If varDebug > 0 Then
+            WriteEventLog(aMsg)
+            Write1Line()
+        End If
+        Me.Invoke(New EventHandler(AddressOf ShowReadyToMove))
+        aMsg = ""
+        '--
+        '-- На PathTrace отображаем ситуацию ---------------------------------------------------
+        If PublicForms.FormPathTraceIsOn Then
+            '--
+            '-- Деблокируем управление формой --------------------------------------------------
+            fPathTrace.InMotion(False)
+            '--
+            '-- Отображаем Текущую позицию как исходную ----------------------------------------
+            fPathTrace.SetInitPosition(aMapID, aAreaID, aX, aY, aA)
+            '--
+        End If
+        '--
+    End Sub
+
+    '*******************************************************************************************
+    '** BodyMotionControl_MovingDir
+    '*******************************************************************************************
+    Private Sub BodyMotionControl_MovingDir(ByVal aDir As String)
+        If BodyStateControlIsOn Then BodyStateControl.ShowDirection(aDir)
+    End Sub
+
+#End Region
+
+#Region " ! BodyStateControl Events"
+
+    '** BodyStateControl_IRBumpDist ********************************************************************
+    Private Sub BodyStateControl_USDistance(ByVal aDir As String, ByVal aVal As Integer)
+        '--
+        If BodyMotionControlIsOn Then
+            BodyMotionControl.SetUSDist(aDir, aVal)
+            aMsg = "USDist: " & aDir.ToString & " = " & aVal.ToString
+            If varDebug > 3 Then WriteEventLog(aMsg)
+            aMsg = ""
+        End If
+        '--
+    End Sub
+
+    '** BodyStateControl_ExecManual ********************************************************************
+    Private Sub BodyStateControl_ExecManual(ByVal aDir As String, ByVal aState As Boolean)
+        '--
+        If btnManual.Text = "Automat" Then
+            If BodyMotionControlIsOn Then
+                BodyMotionControl.ExecManual(aDir, aState)
+                aMsg = "ExecManual: " & aDir.ToString & " = " & aState.ToString
+                If varDebug > 0 Then WriteEventLog(aMsg)
+                aMsg = ""
+            End If
+            '--
+        End If
+        '--
+    End Sub
+
+    '** BodyStateControl_Bumpers ***********************************************************************
+    Private Sub BodyStateControl_Bumpers(ByVal aDir As String, ByVal aVal As Boolean)
+        '--
+        If BodyMotionControlIsOn Then
+            BodyMotionControl.SetBumpers(aDir, aVal)
+            aMsg = "Bumper: " & aDir.ToString & " = " & aVal.ToString
+            If varDebug > -3 Then WriteEventLog(aMsg)
+            aMsg = ""
+            If PublicForms.FormObstaclesIsOn Then fObstacles.ShowBumpers(True)
+        End If
+        '--
+    End Sub
+
+    '** BodyStateControl_IRBumpDist ********************************************************************
+    Private Sub BodyStateControl_IRBumpDist(ByVal aDir As String, ByVal aVal As Integer)
+        '--
+        If BodyMotionControlIsOn Then
+            BodyMotionControl.SetIRDist(aDir, aVal)
+            aMsg = "IRDist: " & aDir.ToString & " = " & aVal.ToString
+            If varDebug > 3 Then WriteEventLog(aMsg)
+            aMsg = ""
+        End If
+        '--
+    End Sub
+
+    '** BodyStateControl_PowerState ********************************************************************
+    Private Sub BodyStateControl_PowerState(ByVal aDir As String, ByVal aState As Boolean)
+        '--
+        aMsg = "PowerState: " & aDir.ToString & " = " & aState.ToString
+        If varDebug > 3 Then WriteEventLog(aMsg)
+        aMsg = ""
+        '--
+    End Sub
+
+#End Region
+
+#Region " ! BodyGoalListBuilder Events"
+
+    '*******************************************************************************************
+    '** BodyGoalListBuilder_PathBuilt
+    '*******************************************************************************************
+    Private Sub BodyGoalListBuilder_PathBuilt(ByVal aPathID As String, ByVal aMapID As Integer, _
+                                    ByVal mCount As Integer, ByVal mGates() As clsMapGate, _
+                                    ByVal fCount As Integer, ByVal fGates() As clsMapGate)
+        Dim pArea(0) As Integer
+        Dim pX(0) As Double
+        Dim pY(0) As Double
+        Dim pA(0) As Double
+        Dim pW(0) As Double
+        Dim pL(0) As Double
+        '--
+        '-- Отображаем Маршрут на форме PathTrace ----------------------------------------------
+        If mCount > -1 Then
+            varGoalListFile = aPathID
+            '--
+            If CreateGoalListFile(aMapID, mCount, mGates) Then
+                varGoalListType = 0
+                '--
+                '-- Передаем Маршрут на удаленный терминал -------------------------------------
+                If PublicForms.ServerIsConnected And Len(varGoalListFile) > 4 Then
+                    fConnectionServer.GoalListMessage(varGoalListType, varGoalListFile)
+                    ExtractGoalPoints(mCount, mGates, pArea, pX, pY, pA, pW, pL)
+                    fConnectionServer.SendGoalPoints(varGoalListFile, varGoalListType, _
+                                      aMapID, mCount, pArea, pX, pY, pA, pW, pL)
+                End If
+                '--
+                '-- Отображаем Маршрут на PathTrace  -------------------------------------------
+                If PublicForms.FormPathTraceIsOn Then
+                    fPathTrace.SetPathGates(fCount, fGates)
+                End If
+                '--
+                '-- Заносим имя Маршрута в окошко для исполнения -------------------------------
+                Me.Invoke(New EventHandler(AddressOf ShowGoalListFile))
+                '--
+                '-- Определяем состояние кнопок как готовность к движению ----------------------
+                msgColor = Color.Green
+                aMsg = "МАРШРУТ сформирован"
+                If varDebug > 0 Then WriteEventLog(aMsg)
+                Me.Invoke(New EventHandler(AddressOf ShowReadyToMove))
+                aMsg = ""
+            Else
+                varGoalListFile = ""
+                msgColor = Color.Red
+                aMsg = "ОШИБКА при формировании Маршрута"
+                '--
+                '-- Передаем сообщение об ошибке на удаленный терминал -------------------------
+                If PublicForms.ServerIsConnected Then
+                    fConnectionServer.ErrMessage(aMsg)
+                End If
+                '--
+                If varDebug > 0 Then WriteEventLog(aMsg)
+                Me.Invoke(New EventHandler(AddressOf ShowMsg))
+                aMsg = ""
+            End If
+        Else
+            varGoalListFile = ""
+            msgColor = Color.Red
+            aMsg = "Маршрут НЕ СФОРМИРОВАН!"
+            '--
+            '-- Передаем сообщение об ошибке на удаленный терминал -------------------------
+            If PublicForms.ServerIsConnected Then
+                fConnectionServer.ErrMessage(aMsg)
+            End If
+            '--
+            If varDebug > 0 Then WriteEventLog(aMsg)
+            Me.Invoke(New EventHandler(AddressOf ShowMsg))
+            aMsg = ""
+        End If
+        '-
+    End Sub
+
+#End Region
+
+#Region " ! PathTrace Events"
+
+    '*******************************************************************************************
+    '** PathTrace_DoBuildPath
+    '*******************************************************************************************
+    Private Sub PathTrace_DoBuildPath(ByVal aMapID As Integer, ByVal aInitAreaID As Integer, _
+                                      ByVal aInitX As Double, ByVal aInitY As Double, _
+                                      ByVal aInitA As Double, ByVal aGoalAreaID As Integer, _
+                                      ByVal aGoalX As Double, ByVal aGoalY As Double, _
+                                      ByVal aGoalA As Double)
+        DoBuildPath(aMapID, aInitAreaID, aInitX, aInitY, aInitA, _
+                            aGoalAreaID, aGoalX, aGoalY, aGoalA)
+    End Sub
+
+#End Region
+
+#Region " ! ConnectionServer Events"
+
+    '*******************************************************************************************
+    '** Connection_Accepted
+    '*******************************************************************************************
+    Private Sub Connection_Accepted()
+        Dim aMapID As Integer
+        Dim aAreaID As Integer
+        Dim aPsFrID As Integer
+        Dim aX As Double
+        Dim aY As Double
+        Dim aA As Double
+        Dim aVel As Double
+        Dim aOmg As Double
+        Dim aTS As Double
+        Dim pMap As Integer
+        Dim pCount As Integer = -1
+        Dim pArea(0) As Integer
+        Dim pX(0) As Double
+        Dim pY(0) As Double
+        Dim pA(0) As Double
+        Dim pW(0) As Double
+        Dim pL(0) As Double
+        '--
+        '-- Отсылаем на удаленный терминал индакаторы рабочего состояния -----------------------
+        fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn, _
+                                        BodyMotionControlIsOn, BodyStateControlIsOn)
+        '--
+        '-- Отсылаем на удаленный терминал состояние всех бамперое -----------------------------
+        If BodyStateControlIsOn Then
+            BodyStateControl.GetBumpersState()
+            fConnectionServer.BumpersMessage()
+        End If
+        '--
+        '-- Отсылаем на удаленный терминал Название и Тип Маршрута/Команды ---------------------
+        fConnectionServer.GoalListMessage(varGoalListType, varGoalListFile)
+        '--
+        '***************************************************************************************
+        If BodyMotionControlIsOn = False Then Exit Sub
+        '--
+        '-- Отсылаем Начальную Позицию на удаленный терминал индакатор  ------------------------
+        If varStatus = cRobotReady Then
+            BodyMotionControl.GetCurrPosition(aMapID, aAreaID, aPsFrID, aX, aY, aA, aTS)
+            fConnectionServer.InitPosition(aMapID, aAreaID, aPsFrID, aX, aY, aA)
+        End If
+        '--
+        '-- Если робот готов или уже в движении, отсылаем GoalList на удаленный терминал -------
+        If varStatus = cRobotMove Or varStatus = cRobotBuildMap Then
+            BodyMotionControl.GetGoalPoints(pMap, pCount, pArea, pX, pY, pA, pW, pL)
+            fConnectionServer.SendGoalPoints(varGoalListFile, varGoalListType, pMap, _
+                                             pCount, pArea, pX, pY, pA, pW, pL)
+        End If
+        '--
+        '-- Если робот уже в движении, отсылаем Текущую Позицию на удаленный терминал ----------
+        If varStatus = cRobotMove Then
+            BodyMotionControl.GetCurrPosition(aMapID, aAreaID, aPsFrID, aX, aY, aA, aTS)
+            BodyMotionControl.GetCurrVelOmg(aVel, aOmg)
+            fConnectionServer.Position(aMapID, aAreaID, aPsFrID, aX, aY, aA, aVel, aOmg, aTS)
+        End If
+        '--
+        '-- Контрольная печать -----------------------------------------------------------------
+        msgColor = Color.Green
+        aMsg = "На удаленный терминал передано полное состояние Робота"
+        If varDebug > 0 Then WriteEventLog(aMsg)
+        Me.Invoke(New EventHandler(AddressOf ShowMsg))
+        aMsg = ""
+        '--
+    End Sub
+
+    '*******************************************************************************************
+    '** Connection_DoBuildPath
+    '*******************************************************************************************
+    Private Sub Connection_DoBuildPath(ByVal aMapID As Integer, ByVal aInitAreaID As Integer, _
+                           ByVal aInitX As Double, ByVal aInitY As Double, _
+                           ByVal aInitA As Double, ByVal aGoalAreaID As Integer, _
+                           ByVal aGoalX As Double, ByVal aGoalY As Double, _
+                           ByVal aGoalA As Double)
+        DoBuildPath(aMapID, aInitAreaID, aInitX, aInitY, aInitA, _
+                            aGoalAreaID, aGoalX, aGoalY, aGoalA)
+    End Sub
+
+    '*******************************************************************************************
+    '** Connection_DoExec
+    '*******************************************************************************************
+    Private Sub Connection_DoExec(ByVal aGoalListType As Integer, ByVal aGoalListFile As String)
+        varGoalListType = aGoalListType
+        varGoalListFile = aGoalListFile
+        Me.Invoke(New EventHandler(AddressOf ShowGoalListFile))
+        DoExec()
+    End Sub
+
+    '*******************************************************************************************
+    '** Connection_DoStop
+    '*******************************************************************************************
+    Private Sub Connection_DoStop()
+        DoStop()
+    End Sub
+
+    '*******************************************************************************************
+    '** Connection_DoAutomat
+    '*******************************************************************************************
+    Private Sub Connection_DoAutomat()
+        DoAutomat()
+    End Sub
+
+    '*******************************************************************************************
+    '** Connection_DoManual
+    '*******************************************************************************************
+    Private Sub Connection_DoManual()
+        DoManual()
+    End Sub
+
+    '*******************************************************************************************
+    '** Connection_DoBuildMap
+    '*******************************************************************************************
+    Private Sub Connection_DoBuildMap()
+        DoBuildMap()
+    End Sub
+
+#End Region
+
+    '*******************************************************************************************
+
+#Region " *** DoBuildPath"
+
+    '*******************************************************************************************
+    '** DoBuildPath
+    '*******************************************************************************************
+    Private Sub DoBuildPath(ByVal aMapID, ByVal aInitAreaID, ByVal aInitX, ByVal aInitY, _
+                            ByVal aInitA, ByVal aGoalAreaID, ByVal aGoalX, ByVal aGoalY, _
+                            ByVal aGoalA)
+        '--
+        If BodyGoalListBuilderIsOn = False Then
+            '--
+            '-- Индикация: Модуль BodyGoalListBuilder НЕ подключен -----------------------------
+            msgColor = Color.Red
+            aMsg = "Модуль BodyGoalListBuilder НЕ подключен. " + _
+                   "Команда ПОСТРОИТЬ МАРШРУТ недопустима!"
+            If PublicForms.ServerIsConnected Then
+                fConnectionServer.ErrMessage(aMsg)
+                fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn, _
+                                                BodyMotionControlIsOn, BodyStateControlIsOn)
+            End If
+            If varDebug > 0 Then WriteEventLog(aMsg)
+            Me.Invoke(New EventHandler(AddressOf ShowEnabeled))
+            aMsg = ""
+            '--
+            Exit Sub
+        End If
+        '--
+        '-- Контрольная печать -----------------------------------------------------------------
+        msgColor = Color.Green
+        aMsg = "Команда ПОСТРОИТЬ МАРШРУТ"
+        If varDebug > 0 Then WriteEventLog(aMsg)
+        Me.Invoke(New EventHandler(AddressOf ShowMsg))
+        aMsg = ""
+        '--
+        '-- Отправляем команду GoalListBuilder на формирование Маршрута ------------------------
+        BodyGoalListBuilder.DoBuildPath(aMapID, aInitAreaID, aInitX, aInitY, aInitA, _
+                                                    aGoalAreaID, aGoalX, aGoalY, aGoalA)
+        '--
+    End Sub
+
+#End Region
+
+#Region " *** DoExec"
+
+    '*******************************************************************************************
+    '** DoExec
+    '*******************************************************************************************
+    Private Sub DoExec()
+        '--
+        Dim pMap As Integer
+        Dim pCount As Integer = -1
+        '--
+        Dim pArea(0) As Integer
+        Dim pX(0) As Double
+        Dim pY(0) As Double
+        Dim pA(0) As Double
+        Dim pW(0) As Double
+        Dim pL(0) As Double
+        '--
+        '-- Проверяем возможность двигаться ----------------------------------------------------
+        If BodyMotionControlIsOn = False Then
+            '--
+            '-- Индикация: Модуль BodyMotionControl НЕ подключен -------------------------------
+            msgColor = Color.Red
+            aMsg = "Модуль BodyMotionControl НЕ подключен. " + _
+                   "Команда ДВИГАТЬСЯ недопустима!"
+            varStatus = cRobotSleep
+            If PublicForms.ServerIsConnected Then
+                fConnectionServer.ErrMessage(aMsg)
+                fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn, _
+                                                BodyMotionControlIsOn, BodyStateControlIsOn)
+            End If
+            If varDebug > 0 Then WriteEventLog(aMsg)
+            Me.Invoke(New EventHandler(AddressOf ShowEnabeled))
+            aMsg = ""
+            '--
+            Exit Sub
+        End If
+        '--
+        '***************************************************************************************
+        '-- Режим пошагой отладки навигации со сканером. Первый шаг уже сделан -----------------
+        If StepMode And btnStop.Enabled = True Then
+            '--
+            varStatus = cRobotMove
+            '--
+            '-- Контрольная печать -------------------------------------------------------------
+            If varDebug > 0 Then
+                WriteEventLog("lblMsg_Click ===========> BodyMotionControl.RepeatExecution")
+            End If
+            '--
+            If BodyMotionControlIsOn Then BodyMotionControl.RepeatExecution()
+            '--
+            Exit Sub
+        End If
+        '--
+        '***************************************************************************************
+        '-- Основной режим. Загружаем целевой маршрут для исполнения ---------------------------
+        If LoadGoalList() = False Then Exit Sub
+        '--
+        '-- Меняем индикатор Состояния Робота --------------------------------------------------
+        varStatus = cRobotMove
+        '--
+        '-- Извлекаем GoalPoints для PathTrace и удаленного терминала --------------------------
+        If PublicForms.FormPathTraceIsOn Or PublicForms.ServerIsConnected Then
+            BodyMotionControl.GetGoalPoints(pMap, pCount, pArea, pX, pY, pA, pW, pL)
+        End If
+        '--
+        '-- Передаем GoalPoints на удаленный терминал ------------------------------------------
+        If PublicForms.ServerIsConnected Then
+            fConnectionServer.SendGoalPoints(varGoalListFile, varGoalListType, pMap, _
+                                             pCount, pArea, pX, pY, pA, pW, pL)
+            fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn, _
+                                            BodyMotionControlIsOn, BodyStateControlIsOn)
+        End If
+        '--
+        '-- На PathTrace отображаем Маршрут и блокируем управление формой ----------------------
+        If PublicForms.FormPathTraceIsOn Then
+            fPathTrace.SetPathPoints(pMap, pCount, pArea, pX, pY, pA, pW, pL)
+            fPathTrace.InMotion(True)
+        End If
+        '--
+        '-- Отображаем Текущую позицию на PathChart  -------------------------------------------
+        If PublicForms.FormPathChartIsOn Then
+            fPathChart.InitPathPicture()
+        End If
+        '--
+        '-- Очищаем Obstacles ------------------------------------------------------------------
+        If PublicForms.FormObstaclesIsOn Then
+            fObstacles.ClearDataValues()
+        End If
+        '--
+        '-- Приоритет данному процессу: RealTime,High,AboveNormal,Normal,BelowNormal,Low -------
+        thisProcess.PriorityClass = ProcessPriorityClass.RealTime
+        thisProcess.PriorityBoostEnabled = True
+        '--
+        '-- Индикация Маршрут/Команда принят на исполнение -------------------------------------
+        msgColor = Color.Green
+        aMsg = "Команда ДВИГАТЬСЯ. Исполняем Маршрут/Команду " + varGoalListFile.ToString
+        If varDebug > 0 Then
+            Write1Line()
+            WriteEventLog(aMsg)
+        End If
+        Me.Invoke(New EventHandler(AddressOf ShowMoving))
+        aMsg = ""
+        '--
+        '-- Если Робот еще не двигается - запускаем движение по целевому маршруту --------------
+        If BodyMotionControl.Mode < cModeMove Then
+            BodyMotionControl.DoMove()
+        End If
+        '--
+        '-- Передаем сообщение Двигаемся на удаленный терминал ---------------------------------
+        If PublicForms.ServerIsConnected Then
+            fConnectionServer.ExecPressed()
+        End If
+        '--
+    End Sub
+
+#End Region
+
+#Region " *** DoStop"
+
+    '*******************************************************************************************
+    '** DoStop
+    '*******************************************************************************************
+    Private Sub DoStop()
+        '--
+        '-- Проверяем возможность двигаться ----------------------------------------------------
+        If BodyMotionControlIsOn = False Then
+            '--
+            '-- Индикация: Модуль BodyMotionControl НЕ подключен -------------------------------
+            msgColor = Color.Red
+            aMsg = "Модуль BodyMotionControl НЕ подключен. " + _
+                   "Команда ОСТАНОВИТЬСЯ недопустима!"
+            varStatus = cRobotSleep
+            If PublicForms.ServerIsConnected Then
+                fConnectionServer.ErrMessage(aMsg)
+                fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn, _
+                                                BodyMotionControlIsOn, BodyStateControlIsOn)
+            End If
+            If varDebug > 0 Then WriteEventLog(aMsg)
+            Me.Invoke(New EventHandler(AddressOf ShowEnabeled))
+            aMsg = ""
+            '--
+            Exit Sub
+        End If
+        '--
+        '-- Запускаем процедуру остановки ------------------------------------------------------
+        BodyMotionControl.DoStop(1)
+        '--
+        '-- Передаем полученную команду на удаленный терминал ----------------------------------
+        'If PublicForms.ServerIsConnected Then
+        'fConnectionServer.StopReason(cStopReason(1))
+        'fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn, _
+        '                               BodyMotionControlIsOn, BodyStateControlIsOn)
+        'End If
+        '--
+        '-- Демонстрируем, что Останавливаемся -------------------------------------------------
+        msgColor = Color.Green
+        aMsg = "Команда ОСТАНОВИТЬСЯ. Останавливаемся"
+        If varDebug > 0 Then
+            WriteEventLog(aMsg)
+            Write1Line()
+        End If
+        Me.Invoke(New EventHandler(AddressOf ShowEnabeled))
+        aMsg = ""
+        '--
+    End Sub
+
+#End Region
+
+#Region " *** DoAutomat"
+
+    '*******************************************************************************************
+    '** DoAutomat
+    '*******************************************************************************************
+    Private Sub DoAutomat()
+        '--
+        '-- Проверяем можно ли переключаться на Автоматический режим ---------------------------
+        If BodyMotionControlIsOn = False Then
+            '--
+            '-- Индикация: Модуль BodyMotionControl НЕ подключен -------------------------------
+            msgColor = Color.Red
+            aMsg = "Модуль BodyMotionControl НЕ подключен. " + _
+                   "Команда КОМАНДНЫЙ РЕЖИМ недопустима!"
+            varStatus = cRobotSleep
+            If PublicForms.ServerIsConnected Then
+                fConnectionServer.ErrMessage(aMsg)
+                fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn, _
+                                                BodyMotionControlIsOn, BodyStateControlIsOn)
+            End If
+            If varDebug > 0 Then WriteEventLog(aMsg)
+            Me.Invoke(New EventHandler(AddressOf ShowEnabeled))
+            aMsg = ""
+            '--
+            Exit Sub
+        End If
+        '--
+        varStatus = cRobotReady
+        '--
+        '-- Передаем полученную команду на удаленный терминал ------------------------------
+        If PublicForms.ServerIsConnected Then
+            fConnectionServer.AutomatPressed()
+            fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn, _
+                                            BodyMotionControlIsOn, BodyStateControlIsOn)
+        End If
+        '--
+        '-- Демонстрируем, что переходим в автоматический режим ----------------------------
+        msgColor = Color.DarkBlue
+        aMsg = "Команда КОМАНДНЫЙ РЕЖИМ"
+        If varDebug > 0 Then
+            Write2Line()
+            WriteEventLog(aMsg)
+        End If
+        Me.Invoke(New EventHandler(AddressOf ShowEnabeled))
+        aMsg = ""
+        '--
+        '-- Очищаем картинку на Obstacles  -------------------------------------------------
+        If PublicForms.FormObstaclesIsOn Then
+            fObstacles.ClearDataValues()
+        End If
+        '--
+        '-- Запускаем автоматический режим -------------------------------------------------
+        BodyMotionControl.SetManual(False)
+        '--
+    End Sub
+
+#End Region
+
+#Region " *** DoManual"
+
+    '*******************************************************************************************
+    '** DoManual
+    '*******************************************************************************************
+    Private Sub DoManual()
+        '--
+        '-- Проверяем можно ли переключаться на Ручной режим -----------------------------------
+        If BodyStateControlIsOn = False Or BodyMotionControlIsOn = False Then
+            '--
+            '-- Индикация: Модуль BodyMotionControl НЕ подключен -------------------------------
+            msgColor = Color.Red
+            aMsg = "Модуль BodyMotionControl/BodyMotionControl НЕ подключен(ы). " + _
+                   "Команда РУЧНОЕ УПРАВЛЕНИЕ недопустима!"
+            If PublicForms.ServerIsConnected Then
+                fConnectionServer.ErrMessage(aMsg)
+                fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn, _
+                                                BodyMotionControlIsOn, BodyStateControlIsOn)
+            End If
+            If varDebug > 0 Then WriteEventLog(aMsg)
+            Me.Invoke(New EventHandler(AddressOf ShowEnabeled))
+            aMsg = ""
+            '--
+            Exit Sub
+        End If
+        '--
+        varStatus = cRobotManual
+        '--
+        '-- Передаем полученную команду на удаленный терминал ------------------------------
+        If PublicForms.ServerIsConnected Then
+            fConnectionServer.ManualPressed()
+            fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn, _
+                                       BodyMotionControlIsOn, BodyStateControlIsOn)
+        End If
+        '--
+        '-- Демонстрируем, что переходим в ручной режим ------------------------------------
+        msgColor = Color.DarkBlue
+        aMsg = "Команда РУЧНОЕ УПРАВЛЕНИЕ"
+        If varDebug > 0 Then
+            Write2Line()
+            WriteEventLog(aMsg)
+        End If
+        Me.Invoke(New EventHandler(AddressOf ShowManual))
+        aMsg = ""
+        '--
+        '-- Очищаем картинку на Obstacles  -------------------------------------------------
+        If PublicForms.FormObstaclesIsOn Then
+            fObstacles.ClearDataValues()
+        End If
+        '--
+        '-- Запускаем ручной режим ---------------------------------------------------------
+        BodyMotionControl.SetManual(True)
+        '--
+    End Sub
+
+#End Region
+
+#Region " *** DoBuildMap"
+
+    '*******************************************************************************************
+    '** DoBuildMap
+    '*******************************************************************************************
+    Private Sub DoBuildMap()
+        '--
+        '-- Проверяем возможность двигаться ----------------------------------------------------
+        If BodyMotionControlIsOn = False Then
+            '--
+            '-- Индикация: Модуль BodyMotionControl НЕ подключен -------------------------------
+            msgColor = Color.Red
+            aMsg = "Модуль BodyMotionControl НЕ подключен. " + _
+                   "Команда ОСТАНОВИТЬСЯ недопустима!"
+            varStatus = cRobotSleep
+            If PublicForms.ServerIsConnected Then
+                fConnectionServer.ErrMessage(aMsg)
+                fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn, _
+                                                BodyMotionControlIsOn, BodyStateControlIsOn)
+            End If
+            If varDebug > 0 Then WriteEventLog(aMsg)
+            Me.Invoke(New EventHandler(AddressOf ShowEnabeled))
+            aMsg = ""
+            '--
+            Exit Sub
+        End If
+        '--
+        varStatus = cRobotBuildMap
+        '--
+        '-- Передаем полученную команду на удаленный терминал ------------------------------
+        If PublicForms.ServerIsConnected Then
+            fConnectionServer.BuildMapPressed()
+            fConnectionServer.StatusMessage(varStatus, BodyGoalListBuilderIsOn, _
+                                            BodyMotionControlIsOn, BodyStateControlIsOn)
+        End If
+        '--
+        '-- Демонстрируем, что Строится карта операционной среды ---------------------------
+        msgColor = Color.DarkBlue
+        aMsg = "Строится карта операционной среды"
+        If varDebug > 0 Then WriteEventLog(aMsg)
+        Me.Invoke(New EventHandler(AddressOf ShowMapping))
+        aMsg = ""
+        '--
+        '-- Запускаем процедуру построения карты операционной среды ------------------------
+        BodyMotionControl.BuildMap()
+        '--
+    End Sub
+
+#End Region
+
+    '*******************************************************************************************
+
+#Region " ** LoadGoalList, DelGoalListFile"
+
+    '*******************************************************************************************
+    '** LoadGoalList
+    '*******************************************************************************************
+    Public Function LoadGoalList() As Boolean
+        Dim aMapID As Integer
+        Dim aAreaID As Integer
+        Dim aPsFrID As Integer
+        Dim aX As Double
+        Dim aY As Double
+        Dim aA As Double
+        Dim aTS As Double
+        Dim res As Boolean
+        '--
+        '-- Если есть Карта и задана Команда, то GoalList пересчитываеися в координаты Карты ---
+        If MapBaseIsOn And varGoalListType = 1 Then
+            '--
+            BodyMotionControl.GetCurrPosition(aMapID, aAreaID, aPsFrID, aX, aY, aA, aTS)
+            '--
+            '-- Загружаем и пересчитываем Команду для исполнения -------------------------------
+            res = GoalList.LoadGoalListAndInitPoint(varGoalListType, varGoalListFile, _
+                                                    aMapID, aAreaID, aPsFrID, aX, aY, aA)
+            '--
+        Else
+            '--
+            '-- Загружаем Маршрут/Команду для исполнения ---------------------------------------
+            res = GoalList.LoadGoalList(varGoalListType, varGoalListFile)
+            '--
+        End If
+        '--
+        If res Then
+            '--
+            '-- Загружаем Исходную Позицию из файла GoalList -----------------------------------
+            BodyMotionControl.SetInitPositionFromGoalList()
+            '--
+            '-- Определяем направление движения из файла GoalList ------------------------------
+            If Not BodyMotionControl.SetForwardFromGoalList() Then
+                LoadGoalList = False
+                Exit Function
+            End If
+            '--
+            '-- Передаем название Маршрута/Команды на удаленный терминал -----------------------
+            If PublicForms.ServerIsConnected Then
+                fConnectionServer.GoalListMessage(varGoalListType, varGoalListFile)
+            End If
+            '--
+            '-- Звуковая индикация -------------------------------------------------------------
+            If BodyMotionControl.Mode < cModeMove Then
+                If SoundsOn Then Sound.PlayWaveFile(cWavFile(23))
+            End If
+            '--
+            LoadGoalList = True
+            '--
+        Else
+            '--
+            '-- Индикация Маршрут/Команда отсутствует ------------------------------------------
+            msgColor = Color.Red
+            aMsg = "Маршрут/Команда " + varGoalListFile.ToString + " отсутствует!"
+            If PublicForms.ServerIsConnected Then fConnectionServer.ErrMessage(aMsg)
+            If varDebug > 0 Then WriteEventLog(aMsg)
+            Me.Invoke(New EventHandler(AddressOf ShowMsg))
+            aMsg = ""
+            '--
+            '-- Звуковая индикация -------------------------------------------------------------
+            If SoundsOn Then Sound.PlayWaveFile(cWavFile(11))
+            '--
+            LoadGoalList = False
+            '--
+        End If
+        '--
+    End Function
+
+    '*******************************************************************************************
+    '** DelGoalListFile
+    '*******************************************************************************************
+    Public Function DelGoalListFile() As Boolean
+        GoalList.DelGoalListFile()
+    End Function
+
+#End Region
+
+#Region " ** CreateGoalListFile"
+
+    '*******************************************************************************************
+    '** CreateGoalListFile
+    '*******************************************************************************************
+    Private Function CreateGoalListFile(ByVal aMapID As Integer, ByVal aCount As Integer, _
+                                        ByRef aGates() As clsMapGate) As Boolean
+        '--
+        Dim aGoalListFile As String
+        Dim aTextLine As String
+        Dim cDelimiter As Char = ControlChars.Tab
+        Dim i As Integer
+        '--
+        CreateGoalListFile = False
+        '--
+        '-- Проверяем наличие массива целей ----------------------------------------------------
+        If aCount < 0 Then Exit Function
+        '--
+        '-- Проверяем корректность задания названия файла --------------------------------------
+        If Len(varGoalListFile) < 4 Then Exit Function
+        aGoalListFile = cGoalListDir + varGoalListFile + ".txt"
+        '--
+        '-- Уничтожаем файл, если он уже существует --------------------------------------------
+        If System.IO.File.Exists(aGoalListFile) = True Then
+            System.IO.File.Delete(aGoalListFile)
+        End If
+        '--
+        '-- Формируем объекты Stream и Writer --------------------------------------------------
+        Dim fStream = New FileStream(aGoalListFile, FileMode.Append, FileAccess.Write, _
+                                     FileShare.Write)
+        Dim oWriter = New StreamWriter(fStream)
+        '--
+        '-- Пишем первую строку файла ----------------------------------------------------------
+        oWriter.WriteLine(New String("*", 135))
+        oWriter.WriteLine("*MapID=" + aMapID.ToString & cDelimiter & "Fwd")
+        oWriter.WriteLine(New String("*", 135))
+        oWriter.WriteLine("*Area" & cDelimiter & _
+                          "PsFr" & cDelimiter & "Line" & cDelimiter & _
+                          "Type" & cDelimiter & "X1" & cDelimiter & _
+                          "Y1" & cDelimiter & "X2" & cDelimiter & _
+                          "Y2" & cDelimiter & "MidX" & cDelimiter & _
+                          "MidY" & cDelimiter & "Angle" & cDelimiter & _
+                          "Norm" & cDelimiter & "Width" & cDelimiter & _
+                          "Level" & cDelimiter & "A" & cDelimiter & _
+                          "B" & cDelimiter & "C")
+        oWriter.WriteLine(New String("-", 135))
+        '--
+        '-- Пишем файл строка за строкой -------------------------------------------------------
+        For i = 0 To aCount
+            '--
+            '-- Очередная подцель кодируется в текстовую строку --------------------------------
+            aTextLine = aGates(i).AreaID.ToString + cDelimiter + _
+                        aGates(i).PassFrameID.ToString + cDelimiter + _
+                        aGates(i).PassFrameLine.ToString + cDelimiter + _
+                        aGates(i).Type.ToString + cDelimiter + _
+                        aGates(i).X1.ToString("f1") + cDelimiter + _
+                        aGates(i).Y1.ToString("f1") + cDelimiter + _
+                        aGates(i).X2.ToString("f1") + cDelimiter + _
+                        aGates(i).Y2.ToString("f1") + cDelimiter + _
+                        aGates(i).MidX.ToString("f1") + cDelimiter + _
+                        aGates(i).MidY.ToString("f1") + cDelimiter + _
+                        aGates(i).Angle.ToString("f1") + cDelimiter + _
+                        aGates(i).Norm.ToString("f1") + cDelimiter + _
+                        aGates(i).Width.ToString("f1") + cDelimiter + _
+                        aGates(i).Level.ToString("f1") + cDelimiter + _
+                        aGates(i).A.ToString("f2") + cDelimiter + _
+                        aGates(i).B.ToString("f2") + cDelimiter + _
+                        aGates(i).C.ToString("f2")
+            '--
+            '-- Пишем очередную строку файла ---------------------------------------------------
+            oWriter.WriteLine(aTextLine)
+            '--
+        Next
+        '--
+        oWriter.Close()
+        fStream.Close()
+        CreateGoalListFile = True
+        '--
+    End Function
+
+#End Region
+
+#Region " ** ExtractGoalPoints"
+
+    '*******************************************************************************************
+    '** ExtractGoalPoints
+    '*******************************************************************************************
+    Private Sub ExtractGoalPoints(ByRef aCount As Integer, ByRef aGates() As clsMapGate, _
+                                  ByRef pArea() As Integer, ByRef pX() As Double, _
+                                  ByRef pY() As Double, ByRef pA() As Double, _
+                                  ByRef pW() As Double, ByRef pL() As Double)
+        Dim i As Integer
+        '--
+        '-- Проверяем наличие массива целей ----------------------------------------------------
+        If aCount < 0 Then Exit Sub
+        '--
+        ReDim pArea(aCount)
+        ReDim pX(aCount)
+        ReDim pY(aCount)
+        ReDim pA(aCount)
+        ReDim pW(aCount)
+        ReDim pL(aCount)
+        '--
+        '-- Заносим в массив строка за строкой -------------------------------------------------
+        For i = 0 To aCount
+            pArea(i) = aGates(i).AreaID
+            pX(i) = aGates(i).MidX
+            pY(i) = aGates(i).MidY
+            pA(i) = aGates(i).Angle
+            pW(i) = aGates(i).Width
+            pL(i) = aGates(i).Level
+        Next
+        '--
+    End Sub
+
+#End Region
+
+    '*******************************************************************************************
+
+#Region " * LoadCommands, LoadPathList, lstGoalLists_Click, ClearGoalLists"
+
+    '*******************************************************************************************
+    '** LoadCommands
+    '*******************************************************************************************
+    Private Sub LoadCommands()
+        Dim DirInfo As New IO.DirectoryInfo(cCommandDir)
+        lstGoalLists.Items.Clear()
+        For Each element As IO.FileInfo In DirInfo.GetFiles("*.txt")
+            lstGoalLists.Items.Add(element.ToString.Replace(".txt", ""))
+        Next
+        '--
+    End Sub
+
+    '*******************************************************************************************
+    '** LoadPathList - Загружаются предопределенные маршруты 
+    '*******************************************************************************************
+    Private Sub LoadPathList()
+        Dim DirInfo As New IO.DirectoryInfo(cPathDir)
+        lstGoalLists.Items.Clear()
+        For Each element As IO.FileInfo In DirInfo.GetFiles("*.txt")
+            lstGoalLists.Items.Add(element.ToString.Replace(".txt", ""))
+        Next
+        '--
+    End Sub
+
+    '** lstGoalLists_Click ********************************************************************
+    Private Sub lstGoalLists_Click(ByVal sender As System.Object, _
+                                   ByVal e As System.EventArgs) Handles lstGoalLists.Click
+        '--
+        lblGoalList.Text = lstGoalLists.SelectedItem.Trim
+        varGoalListFile = Trim(lblGoalList.Text)
+        If chkBasic.Checked = True Then
+            varGoalListType = 1
+        Else
+            varGoalListType = -1
+        End If
+        '--
+        ShowReadyToMove()
+        '--
+    End Sub
+
+    '*******************************************************************************************
+    '** ClearGoalLists
+    '*******************************************************************************************
+    Private Sub ClearGoalLists()
+        lstGoalLists.Items.Clear()
+    End Sub
+
+#End Region
+
+#Region " * chkBasic_CheckedChanged"
+
+    '*******************************************************************************************
+    '** ClearGoalLists
+    '*******************************************************************************************
+    Private Sub chkBasic_CheckedChanged(ByVal sender As System.Object, _
+                         ByVal e As System.EventArgs) Handles chkBasic.CheckedChanged
+        ClearGoalLists()
+        lblGoalList.Text = ""
+        '--
+        If chkBasic.Checked = True Then
+            varGoalListType = 1
+            LoadCommands()
+        Else
+            varGoalListType = -1
+            LoadPathList()
+        End If
+        '--
+    End Sub
+
+#End Region
+
+#Region " * CheckBasic, EnableBasic, DisableBasic"
+
+    '** CheckBasic *****************************************************************************
+    Private Sub CheckBasic()
+        chkBasic.Checked = True
+    End Sub
+
+    '** EnableBasic ****************************************************************************
+    Private Sub EnableBasic()
+        chkBasic.Enabled = True
+    End Sub
+
+    '** DisableBasic ***************************************************************************
+    Private Sub DisableBasic()
+        chkBasic.Enabled = False
+    End Sub
+
+#End Region
+
+#Region " * CheckSaved, EnableSaved, DisableSaved"
+
+    '** CheckSaved *****************************************************************************
+    Private Sub CheckSaved()
+        chkSaved.Checked = True
+    End Sub
+
+    '** EnableSaved ****************************************************************************
+    Private Sub EnableSaved()
+        chkSaved.Enabled = True
+    End Sub
+
+    '** DisableSave ****************************************************************************
+    Private Sub DisableSaved()
+        chkSaved.Enabled = False
+    End Sub
+
+#End Region
+
+    '*******************************************************************************************
+
+#Region "Show Controls"
+
+    '** ShowDisable ****************************************************************************
+    Private Sub ShowDisabled()
+        '--
+        lblMsg.ForeColor = msgColor
+        lblMsg.Text = aMsg
+        '--
+        lstGoalLists.Items.Clear()
+        lblGoalList.Text = ""
+        '--
+        'Командный режим
+        btnManual.Text = "Ручное управление"
+        btnManual.BackColor = Color.FromKnownColor(KnownColor.Control)
+        btnManual.Enabled = False
+        '--
+        btnMap.BackColor = Color.FromKnownColor(KnownColor.Control)
+        btnMap.Enabled = False
+        '--
+        btnExec.BackColor = Color.FromKnownColor(KnownColor.Control)
+        btnExec.Enabled = False
+        '--
+        btnStop.BackColor = Color.FromKnownColor(KnownColor.Control)
+        btnStop.Enabled = False
+        '--
+    End Sub
+
+    '** ShowEnabeled ***************************************************************************
+    Private Sub ShowEnabeled()
+        '--
+        lblMsg.ForeColor = msgColor
+        lblMsg.Text = aMsg
+        '--
+        'Командный режим
+        btnManual.Text = "Ручное управление"
+        '--
+        If BodyMotionControlIsOn Then
+            btnMap.BackColor = Color.LightGreen
+            btnMap.Enabled = True
+            '--
+            If BodyStateControlIsOn Then
+                btnManual.BackColor = Color.LightGreen
+                btnManual.Enabled = True
+            Else
+                btnManual.BackColor = Color.FromKnownColor(KnownColor.Control)
+                btnManual.Enabled = False
+            End If
+            '--
+        Else
+            btnMap.BackColor = Color.FromKnownColor(KnownColor.Control)
+            btnMap.Enabled = False
+            '--
+            btnManual.BackColor = Color.FromKnownColor(KnownColor.Control)
+            btnManual.Enabled = False
+            '--
+        End If
+        '--
+        btnExec.BackColor = Color.LightGreen
+        btnExec.Enabled = False
+        '--
+        btnStop.BackColor = Color.FromKnownColor(KnownColor.Control)
+        btnStop.Enabled = False
+        '--
+    End Sub
+
+    '** ShowReadyToMove ************************************************************************
+    Private Sub ShowReadyToMove()
+        '--
+        lblMsg.ForeColor = msgColor
+        lblMsg.Text = aMsg
+        '--
+        'Командный режим
+        btnManual.Text = "Ручное управление"
+        '--
+        If BodyMotionControlIsOn Then
+            btnMap.BackColor = Color.LightGreen
+            btnMap.Enabled = True
+            '--
+            If BodyStateControlIsOn Then
+                btnManual.BackColor = Color.LightGreen
+                btnManual.Enabled = True
+            Else
+                btnManual.BackColor = Color.FromKnownColor(KnownColor.Control)
+                btnManual.Enabled = False
+            End If
+            '--
+        Else
+            btnMap.BackColor = Color.FromKnownColor(KnownColor.Control)
+            btnMap.Enabled = False
+            '--
+            btnManual.BackColor = Color.FromKnownColor(KnownColor.Control)
+            btnManual.Enabled = False
+            '--
+        End If
+        '--
+        btnExec.BackColor = Color.LightGreen
+        btnExec.Enabled = True
+        '--
+        btnStop.BackColor = Color.FromKnownColor(KnownColor.Control)
+        btnStop.Enabled = False
+        '--
+    End Sub
+
+    '** ShowMoving *****************************************************************************
+    Private Sub ShowMoving()
+        '--
+        lblMsg.ForeColor = msgColor
+        lblMsg.Text = aMsg
+        '--
+        'Командный режим
+        btnManual.Text = "Ручное управление"
+        btnManual.BackColor = Color.FromKnownColor(KnownColor.Control)
+        btnManual.Enabled = False
+        '--
+        btnExec.BackColor = Color.LightGreen
+        btnExec.Enabled = True
+        '--
+        btnStop.BackColor = Color.LightSalmon
+        btnStop.Enabled = True
+        '--
+        btnMap.BackColor = Color.FromKnownColor(KnownColor.Control)
+        btnMap.Enabled = False
+        '--
+    End Sub
+
+    '** ShowMapping ****************************************************************************
+    Private Sub ShowMapping()
+        '--
+        lblMsg.ForeColor = msgColor
+        lblMsg.Text = aMsg
+        '--
+        'Командный режим
+        btnManual.Text = "Ручное управление"
+        btnManual.BackColor = Color.FromKnownColor(KnownColor.Control)
+        btnManual.Enabled = False
+        '--
+        If BodyMotionControlIsOn Then
+            btnMap.BackColor = Color.LightSalmon
+            btnMap.Enabled = False
+        Else
+            btnMap.BackColor = Color.FromKnownColor(KnownColor.Control)
+            btnMap.Enabled = False
+        End If
+        '--
+        btnExec.BackColor = Color.FromKnownColor(KnownColor.Control)
+        btnExec.Enabled = False
+        '--
+        btnStop.BackColor = Color.LightSalmon
+        btnStop.Enabled = True
+        '--
+    End Sub
+
+    '** ShowManual *****************************************************************************
+    Private Sub ShowManual()
+        '--
+        If BodyStateControlIsOn = False Or BodyMotionControlIsOn = False Then Exit Sub
+        '--
+        lblMsg.ForeColor = msgColor
+        lblMsg.Text = aMsg
+        '--
+        'Ручное управление
+        btnManual.Text = "Командный режим"
+        btnManual.BackColor = Color.LightSalmon
+        btnManual.Enabled = True
+        '--
+        btnMap.BackColor = Color.FromKnownColor(KnownColor.Control)
+        btnMap.Enabled = False
+        '--
+        btnExec.BackColor = Color.FromKnownColor(KnownColor.Control)
+        btnExec.Enabled = False
+        '--
+        btnStop.BackColor = Color.FromKnownColor(KnownColor.Control)
+        btnStop.Enabled = False
+        '--
+    End Sub
+
+    '** ShowMsg ********************************************************************************
+    Private Sub ShowMsg()
+        lblMsg.ForeColor = msgColor
+        lblMsg.Text = aMsg
+    End Sub
+
+    '** ShowGoalListFile ***********************************************************************
+    Private Sub ShowGoalListFile()
+        lblGoalList.Text = varGoalListFile
+    End Sub
+
+#End Region
+
+    '*******************************************************************************************
+
+#Region "btnTrace"
+
+    '*******************************************************************************************
+    '** btnTrace_Click
+    '*******************************************************************************************
+    Private Sub btnTrace_Click(ByVal sender As System.Object, _
+                               ByVal e As System.EventArgs) Handles btnTrace.Click
+        Dim aMapID As Integer
+        Dim aAreaID As Integer
+        Dim aPsFrID As Integer
+        Dim aX As Double
+        Dim aY As Double
+        Dim aA As Double
+        Dim aTS As Double
+        '--
+        Dim aSizeX As Double
+        Dim aSizeY As Double
+        '--
+        Dim aMsg As String
+        '--
+        '-- Initialize формы PathChart ---------------------------------------------------------
+        If PublicForms.FormPathChartIsOn Then Exit Sub
+        '--
+        '-- Запрашиваем последнюю позицию Робота -----------------------------------------------
+        BodyMotionControl.GetCurrPosition(aMapID, aAreaID, aPsFrID, aX, aY, aA, aTS)
+        '--
+        '-- Открываем PathChart ----------------------------------------------------------------
+        fPathChart = New frmPathChart
+        '--
+        '-- Запрет на показ параметров ---------------------------------------------------------
+        fPathChart.ShowParams(False)
+        '--
+        If aMapID > 0 Then
+            '--
+            '-- Загрузка Карты из БД -----------------------------------------------------------
+            aMsg = fPathChart.GetMap(aMapID, aSizeX, aSizeY)
+            If aMsg <> "" Then
+                If varDebug > 0 Then WriteEventLog(aMsg)
+                Exit Sub
+            End If
+            '--
+            '-- Изменение размеров панелей -----------------------------------------------------
+            fPathChart.SetPanSize(aSizeX, aSizeY)
+            '--
+        End If
+        '--
+        '-- Загрузка формы ---------------------------------------------------------------------
+        fPathChart.Show()
+        PublicForms.FormPathChart = fPathChart
+        '--
+        '-- Заносим текущие координаты Робота ------------------------------------------------------
+        fPathChart.AddPoints(aX, aY, aA, aX, aY)
+        '--
+    End Sub
+
+#End Region
+
+    '*******************************************************************************************
+
+#Region "IniFile Get Save"
+
+    '** GetParamsFromIniFile *******************************************************************
+    Private Sub GetParamsFromIniFile()
+        '--
+        Dim sID As String
+        '--
+        If Len(varIniFile) < 3 Then Exit Sub
+        '--
+        Dim ini As New clsIniReader(varIniFile)
+        '--
+        ini.Section = "BaldaMain"
+        '---------------------------------------------------------------------------------------
+        sID = ini.ReadString("Debug")
+        If IsNumeric(sID) Then varDebug = CInt(sID)
+        '---------------------------------------------------------------------------------------
+        varLog = ini.ReadString("LogFile")
+        If Len(varLog) < 3 Then
+            varLog = ""
+            varLogFile = ""
+            varDebug = 0
+        Else
+            varLogFile = varLogDir + varLog + "_" + Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".log"
+        End If
+        '---------------------------------------------------------------------------------------
+        sID = ini.ReadString("ShowConnectionServer")
+        If sID.ToLower() = "true" Then showConnectionServer = True
+        If sID.ToLower() = "false" Then showConnectionServer = False
+        '--
+        sID = ini.ReadString("ShowObstacles")
+        If sID.ToLower() = "true" Then showObstacles = True
+        If sID.ToLower() = "false" Then showObstacles = False
+        '--
+        sID = ini.ReadString("ShowPathTrace")
+        If sID.ToLower() = "true" Then showPathTrace = True
+        If sID.ToLower() = "false" Then showPathTrace = False
+        '---------------------------------------------------------------------------------------
+        sID = ini.ReadString("BodyGoalListBuilderToBeOn")
+        If sID.ToLower() = "true" Then varGoalListBuilderToBeOn = True
+        If sID.ToLower() = "false" Then varGoalListBuilderToBeOn = False
+        '--
+        sID = ini.ReadString("BodyMotionControlToBeOn")
+        If sID.ToLower() = "true" Then varMotionControlToBeOn = True
+        If sID.ToLower() = "false" Then varMotionControlToBeOn = False
+        '--
+        sID = ini.ReadString("BodyStateControlToBeOn")
+        If sID.ToLower() = "true" Then varStateControlToBeOn = True
+        If sID.ToLower() = "false" Then varStateControlToBeOn = False
+        '---------------------------------------------------------------------------------------
+        sID = ini.ReadString("MapBaseIsOn")
+        If sID.ToLower() = "true" Then MapBaseIsOn = True
+        If sID.ToLower() = "false" Then MapBaseIsOn = False
+        '---------------------------------------------------------------------------------------
+        sID = ini.ReadString("SoundsOn")
+        If sID.ToLower() = "true" Then SoundsOn = True
+        If sID.ToLower() = "false" Then SoundsOn = False
+        '---------------------------------------------------------------------------------------
+        sID = ini.ReadString("StepMode")
+        If sID.ToLower() = "true" Then StepMode = True
+        If sID.ToLower() = "false" Then StepMode = False
+        '---------------------------------------------------------------------------------------
+        sID = ini.ReadString("Simulator")
+        If IsNumeric(sID) Then Simulator = CInt(sID)
+        '---------------------------------------------------------------------------------------
+    End Sub
+
+    '** SaveParamsToIniFile ********************************************************************
+    Private Sub SaveParamsToIniFile()
+        '--
+        If Len(varIniFile) < 3 Then Exit Sub
+        '--
+        Dim ini As New clsIniReader(varIniFile)
+        '--
+        ini.Write("BaldaMain", "Debug", varDebug.ToString)
+        ini.Write("BaldaMain", "LogFile", varLog)
+        '---------------------------------------------------------------------------------------
+        ini.Write("BaldaMain", "ShowConnectionServer", showConnectionServer.ToString)
+        ini.Write("BaldaMain", "ShowObstacles", showObstacles.ToString)
+        ini.Write("BaldaMain", "ShowPathTrace", showPathTrace.ToString)
+        '---------------------------------------------------------------------------------------
+        ini.Write("BaldaMain", "BodyGoalListBuilderToBeOn", varGoalListBuilderToBeOn.ToString)
+        ini.Write("BaldaMain", "BodyMotionControlToBeOn", varMotionControlToBeOn.ToString)
+        ini.Write("BaldaMain", "BodyStateControlToBeOn", varStateControlToBeOn.ToString)
+        '---------------------------------------------------------------------------------------
+        ini.Write("BaldaMain", "MapBaseIsOn", MapBaseIsOn.ToString)
+        '---------------------------------------------------------------------------------------
+        ini.Write("BaldaMain", "SoundsOn", SoundsOn.ToString)
+        '---------------------------------------------------------------------------------------
+        ini.Write("BaldaMain", "StepMode", StepMode.ToString)
+        '---------------------------------------------------------------------------------------
+        ini.Write("BaldaMain", "Simulator", Simulator.ToString)
+        '---------------------------------------------------------------------------------------
+    End Sub
+
+#End Region
+
+#Region "Write Log File"
+
+    '** Write1Line *****************************************************************************
+    Private Sub Write1Line()
+        WriteLogFile(varLogFile, New String("*", 100))
+    End Sub
+
+    '** Write2Line *****************************************************************************
+    Private Sub Write2Line()
+        WriteLogFile(varLogFile, New String("-", 100))
+    End Sub
+
+    '** WriteEventLog **************************************************************************
+    Private Sub WriteEventLog(ByVal aMes As String)
+        Dim ts As TimeSpan = sysWatch.Elapsed
+        Dim elapsedTime As String = String.Format("{0:00}:{1:00}:{2:00}.{3:000}", ts.Hours, _
+                                                ts.Minutes, ts.Seconds, ts.Milliseconds)
+        WriteLogFile(varLogFile, elapsedTime & " ++ BaldaMain - " & aMes)
+    End Sub
+
+    Private Sub lblGoalList_Click(sender As Object, e As EventArgs) Handles lblGoalList.Click
+
+    End Sub
+
+#End Region
+
+End Class

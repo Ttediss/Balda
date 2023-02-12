@@ -5,17 +5,32 @@
     <title>Main page</title>
 </head>
 <body>
-<h2>Messages</h2>
-<form method="post", action="/add message">
+<h2>Balda</h2>
+<p>Введите имя файла из перечисленных ниже:</p>
+<form method="post", action="/select_file">
     <input type="text", name="text">
-    <input type="text", name="tag">
-    <button type="submit">Add message</button>
-
+    <button type="submit">Select file</button>
 </form>
-<h3>Messages list</h3>
+
+<h3>Files list:</h3>
+<form method="post", action="/find_files">
+    <button type="submit">Find files</button>
+</form>
 {% for message in messages %}
-<div>{{ message.text }}&nbsp;<i>{{ message.tag }}</i></div>
+<div>{{ message.text }}</div>
 {% endfor %}
+
+<!--<p>Введите имя файла из перечисленных ниже:</p>-->
+<!--<form method="post", action="/select_file">-->
+<!--<p><input type="search" list="character">-->
+<!--   <button type="submit">Select file</button>-->
+<!--  <datalist id="character">-->
+<!--  {% for opt in option %}-->
+<!--    <option value="{{ opt }}"></option>-->
+<!--  {% endfor %}-->
+<!--  </datalist>-->
+<!--</p>-->
+<!--</form>-->
 
 </body>
 </html>

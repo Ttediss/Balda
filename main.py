@@ -2,10 +2,11 @@ from collections import namedtuple
 
 from flask import Flask, render_template, redirect, url_for, request
 
+from func import *
 
 app = Flask(__name__)
 
-Message = namedtuple('Message', 'taxt tag')
+Message = namedtuple('Message', 'text')
 messages = []
 
 
@@ -17,9 +18,18 @@ def hello_world():
 def main():
     return render_template('main.html', messages=messages)
 
-@app.route('/add_message', methods = ['POST'])
-def add_message():
+@app.route('/select_file', methods = ['POST'])
+def select_file():
     text = request.form['text']
-    tag = request.form['tag']
-    messages.append(Message(text, tag))
+    execute_file(text)
     return redirect(url_for('main'))
+
+@app.route('/find_files', methods = ['POST'])
+def find_files():
+    option = list_my_progs()
+    for i in range(len(option)):
+        messages.append(Message(option[i]))
+    return redirect(url_for('main'))
+
+if __name__ == '__main__':
+    app.run(host="localhost", port=8000, debug=True)
